@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>인스타 카드뉴스 AI (완전 무료)</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen p-4 sm:p-8 flex flex-col items-center">
+
+  <div class="w-full max-w-lg space-y-5">
+    <!-- 헤더 -->
+    <header class="text-center">
+      <div class="inline-block bg-emerald-500/10 text-emerald-400 text-[11px] font-bold px-2.5 py-1 rounded-full border border-emerald-500/20 mb-2">
+        ✨ 로그인 & API 키 없이 100% 무료 이용
+      </div>
+      <h1 class="text-2xl font-black text-white tracking-tight">인스타 카드뉴스 AI 자동화기</h1>
+      <p class="text-xs text-slate-400 mt-1">기사 내용 복붙 ➔ 바이럴 훅 선정 ➔ 카드뉴스 1분 완성</p>
+    </header>
+
+    <!-- 기사 본문 입력 영역 -->
+    <div class="bg-slate-900 border border-slate-800 p-4 rounded-2xl space-y-3">
+      <label class="text-xs font-bold text-slate-300 block">기사 내용 붙여넣기</label>
+      <textarea id="articleText" rows="5" placeholder="네이버 뉴스 등 기사 본문 내용을 복사해서 여기에 붙여넣으세요..." class="w-full bg-slate-950 border border-slate-800 p-3 text-xs rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"></textarea>
+      
+      <button id="generateBtn" onclick="startGeneration()" class="w-full bg-blue-600 hover:bg-blue-500 font-bold py-3 text-sm rounded-xl transition shadow">
+        ⚡ 1분 만에 카드뉴스 만들기
+      </button>
+    </div>
+
+    <!-- 로딩 표시기 -->
+    <div id="loading" class="hidden text-center py-8 space-y-2">
+      <div class="inline-block animate-spin rounded-full h-8 w-8 border-4 border-blue-500 border-t-transparent"></div>
+      <p class="text-xs text-slate-400" id="loadingText">무료 AI가 바이럴 카피와 이미지를 제작 중입니다 (약 15~25초)...</p>
+    </div>
+
+    <!-- 결과 영역 -->
+    <div id="resultArea" class="hidden space-y-5">
+      <!-- 캔버스 에디터 -->
+      <div class="bg-slate-900 border border-slate-800 p-4 rounded-2xl flex flex-col items-center shadow-xl">
+        <canvas id="cardCanvas" class="w-full max-w-sm aspect-square rounded-xl bg-black shadow-2xl"></canvas>
+
+        <!-- 편집 컨트롤러 -->
+        <div class="w-full mt-4 grid grid-cols-2 gap-3 text-xs">
+          <div>
+            <label class="text-slate-400">글자 크기 (<span id="fontSizeVal">50</span>px)</label>
+            <input type="range" id="fontSizeSlider" min="32" max="72" value="50" class="w-full mt-1 accent-blue-500" oninput="updateCanvas()" />
+          </div>
+          <div>
+            <label class="text-slate-400">텍스트 위치 (Y축)</label>
+            <input type="range" id="yPosSlider" min="450" max="880" value="720" class="w-full mt-1 accent-blue-500" oninput="updateCanvas()" />
+          </div>
+        </div>
+
+        <input type="text" id="customTitleInput" class="w-full mt-3 bg-slate-950 border border-slate-800 px-3 py-2 text-xs rounded-xl" oninput="updateCanvas()" />
+
+        <button onclick="downloadImage()" class="w-full mt-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded-xl transition text-sm shadow">
+          📸 완성된 카드뉴스 사진 저장
+        </button>
+      </div>
+
+      <!-- 바이럴 훅 제목 5종 선택기 -->
+      <div class="bg-slate-900 border border-slate-800 p-4 rounded-2xl space-y-2">
+        <h2 class="text-xs font-bold text-slate-400">AI 추천 훅 타이틀 5개 (클릭하면 바로 적용)</h2>
+        <div id="titlesList" class="flex flex-col gap-2"></div>
+      </div>
+
+      <!-- 인스타 본문 캡션 & 복사 -->
+      <div class="bg-slate-900 border border-slate-800 p-4 rounded-2xl space-y-3">
+        <div class="flex justify-between items-center">
+          <div class="flex gap-1 bg-slate-950 p-1 rounded-lg text-xs">
+            <button onclick="switchTab('sympathetic')" id="tab-sympathetic" class="px-2.5 py-1 rounded-md bg-slate-800 text-white font-bold">공감형</button>
+            <button onclick="switchTab('poll')" id="tab-poll" class="px-2.5 py-1 rounded-md text-slate-400">투표형</button>
+            <button onclick="switchTab('informative')" id="tab-informative" class="px-2.5 py-1 rounded-md text-slate-400">설명형</button>
+          </div>
+          <button onclick="copyCaption()" id="copyBtn" class="bg-slate-800 hover:bg-slate-700 text-xs px-3 py-1.5 rounded-lg font-bold transition">
+            본문 복사
+          </button>
+        </div>
+        <textarea id="captionText" rows="6" readonly class="w-full bg-slate-950 border border-slate-800 p-3 text-xs rounded-xl text-slate-300 leading-relaxed resize-none focus:outline-none"></textarea>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let appData = null;
+    let bgImage = new Image();
+    let currentTab = 'sympathetic';
+
+    // 완전 무료 오픈 AI 생성 로직
+    async function startGeneration() {
+      const article = document.getElementById('articleText').value.trim();
+      if (!article) return alert('기사 본문 내용을 입력해주세요.');
+
+      const loading = document.getElementById('loading');
+      const resultArea = document.getElementById('resultArea');
+      const generateBtn = document.getElementById('generateBtn');
+
+      loading.classList.remove('hidden');
+      resultArea.classList.add('hidden');
+      generateBtn.disabled = true;
+
+      try {
+        // [1] 무료 텍스트 AI (Pollinations Free LLM API) 호출
+        const prompt = `당신은 인스타그램 바이럴 마케터입니다. 아래 기사를 읽고, 독자의 클릭을 유도하는 제목 5개와 본문 3종류, 그리고 실사 사진용 영문 이미지 키워드를 반드시 아래 JSON 형식으로만 응답하세요. 다른 설명은 일체 쓰지 마세요.
+기사:
+${article.slice(0, 2000)}
+
+출력 JSON 형식:
+{
+  "titles": ["자극/호기심 제목 1", "질문형 제목 2", "충격/공감 제목 3", "스토리 요약 제목 4", "핵심 팩트 제목 5"],
+  "image_keyword": "photojournalism shot of the scene, high resolution, cinematic lighting, editorial documentary photography",
+  "captions": {
+    "informative": "사건 핵심 설명 요약... #이슈 #뉴스",
+    "sympathetic": "정말 가슴 아픈 일입니다... 여러분은 어떻게 생각하시나요? #이슈",
+    "poll": "여러분이라면 찬성하시나요, 반대하시나요? 댓글로 남겨주세요! #토론"
+  }
+}`;
+
+        const textRes = await fetch('https://text.pollinations.ai/', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            messages: [{ role: 'user', content: prompt }],
+            jsonMode: true
+          })
+        });
+
+        const textOutput = await textRes.text();
+        // JSON 파싱 (코드 블록 방어)
+        const cleanJsonStr = textOutput.replace(/```json/g, '').replace(/```/g, '').trim();
+        const parsed = JSON.parse(cleanJsonStr);
+
+        // [2] 무료 이미지 생성 (Pollinations FLUX Model API - 무제한 무료)
+        const imagePrompt = encodeURIComponent(`${parsed.image_keyword}, 8k, photorealistic, no text, no watermark`);
+        const freeImageUrl = `https://image.pollinations.ai/prompt/${imagePrompt}?width=1024&height=1024&model=flux&nologo=true&seed=${Math.floor(Math.random()*100000)}`;
+
+        appData = {
+          titles: parsed.titles,
+          captions: parsed.captions,
+          imageUrl: freeImageUrl
+        };
+
+        setupUI();
+        resultArea.classList.remove('hidden');
+      } catch (err) {
+        alert('생성 중 오류가 발생했습니다. 기사 내용을 조금 줄여서 다시 시도해보세요.\n' + err.message);
+      } finally {
+        loading.classList.add('hidden');
+        generateBtn.disabled = false;
+      }
+    }
+
+    function setupUI() {
+      document.getElementById('customTitleInput').value = appData.titles[0];
+
+      const list = document.getElementById('titlesList');
+      list.innerHTML = '';
+      appData.titles.forEach((title, i) => {
+        const btn = document.createElement('button');
+        btn.className = 'text-left text-xs p-2.5 rounded-xl border border-slate-800 bg-slate-950/70 text-slate-300 hover:bg-slate-800 transition';
+        btn.innerText = `${i + 1}. ${title}`;
+        btn.onclick = () => {
+          document.getElementById('customTitleInput').value = title;
+          updateCanvas();
+        };
+        list.appendChild(btn);
+      });
+
+      switchTab('sympathetic');
+
+      // 캔버스 이미지 로드 (CORS 허용)
+      bgImage.crossOrigin = "anonymous";
+      bgImage.src = appData.imageUrl;
+      bgImage.onload = () => updateCanvas();
+    }
+
+    function updateCanvas() {
+      const canvas = document.getElementById('cardCanvas');
+      const ctx = canvas.getContext('2d');
+      const title = document.getElementById('customTitleInput').value;
+      const fontSize = parseInt(document.getElementById('fontSizeSlider').value);
+      const yPos = parseInt(document.getElementById('yPosSlider').value);
+      document.getElementById('fontSizeVal').innerText = fontSize;
+
+      canvas.width = 1024;
+      canvas.height = 1024;
+
+      // 이미지 그리기
+      if (bgImage.complete && bgImage.naturalWidth !== 0) {
+        ctx.drawImage(bgImage, 0, 0, 1024, 1024);
+      } else {
+        ctx.fillStyle = "#1e293b";
+        ctx.fillRect(0, 0, 1024, 1024);
+      }
+
+      // 하단 그라데이션 어둡게 처리 (글자 잘 보이게)
+      const grad = ctx.createLinearGradient(0, 450, 0, 1024);
+      grad.addColorStop(0, 'rgba(0,0,0,0)');
+      grad.addColorStop(0.4, 'rgba(0,0,0,0.5)');
+      grad.addColorStop(1, 'rgba(0,0,0,0.9)');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, 1024, 1024);
+
+      // 텍스트 그리기
+      ctx.font = `bold ${fontSize}px sans-serif`;
+      ctx.fillStyle = '#FFFFFF';
+      ctx.textAlign = 'center';
+      ctx.shadowColor = 'rgba(0,0,0,0.9)';
+      ctx.shadowBlur = 12;
+
+      const maxWidth = 860;
+      const words = title.split(' ');
+      let line = '';
+      const lines = [];
+
+      for (let n = 0; n < words.length; n++) {
+        const testLine = line + words[n] + ' ';
+        if (ctx.measureText(testLine).width > maxWidth && n > 0) {
+          lines.push(line);
+          line = words[n] + ' ';
+        } else {
+          line = testLine;
+        }
+      }
+      lines.push(line);
+
+      const lineHeight = fontSize * 1.35;
+      lines.forEach((l, idx) => {
+        ctx.fillText(l.trim(), 512, yPos + idx * lineHeight);
+      });
+    }
+
+    function switchTab(tab) {
+      currentTab = tab;
+      ['sympathetic', 'poll', 'informative'].forEach(t => {
+        const btn = document.getElementById(`tab-${t}`);
+        if (t === tab) {
+          btn.className = 'px-2.5 py-1 rounded-md bg-slate-800 text-white font-bold';
+        } else {
+          btn.className = 'px-2.5 py-1 rounded-md text-slate-400 hover:text-white';
+        }
+      });
+      document.getElementById('captionText').value = appData.captions[tab];
+    }
+
+    function copyCaption() {
+      navigator.clipboard.writeText(document.getElementById('captionText').value);
+      const btn = document.getElementById('copyBtn');
+      btn.innerText = '✅ 복사 완료!';
+      setTimeout(() => btn.innerText = '본문 복사', 2000);
+    }
+
+    function downloadImage() {
+      const canvas = document.getElementById('cardCanvas');
+      const link = document.createElement('a');
+      link.download = `cardnews-${Date.now()}.png`;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    }
+  </script>
+</body>
+</html>
